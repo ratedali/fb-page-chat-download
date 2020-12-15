@@ -29,7 +29,7 @@ class FBScraper:
         self.since = since
         self.until = until
         folder_param = ('&folder=' + folder) if folder is not None else ''
-        self.uri = self.build_url('{}/conversations?fields=participants,link&limit=400{}', page, folder_param)
+        self.uri = self.build_url('{}/conversations?fields=participants,link{}', page, folder_param)
 
     def build_url(self, endpoint, *params):
         buildres = "https://graph.facebook.com/v3.1/" + endpoint.format(*params) + '&access_token={}'.format(self.token)
@@ -65,13 +65,13 @@ class FBScraper:
 
     def get_messages(self, t):
         extra_params = (('&since=' + str(self.since)) if self.since else '') + (('&until=' + str(self.until)) if self.until else '')
-        url = self.build_url('{}/messages?fields=from,created_time,message,shares,attachments&limit=400' + extra_params, t['id'])
+        url = self.build_url('{}/messages?fields=from,created_time,message,shares,attachments' + extra_params, t['id'])
         thread = self.scrape_thread(url, [])
         if thread:
             print(
-                thread[0]['time'], 
-                t['id'].ljust(20), 
-                str(len(thread)).rjust(3) + ' from', 
+                thread[0]['time'],
+                t['id'].ljust(20),
+                str(len(thread)).rjust(3) + ' from',
                 unidecode.unidecode(t['participants']['data'][0]['name'])
             )
             id_map = {p['id']: p['name'] for p in t['participants']['data']}
@@ -86,8 +86,8 @@ class FBScraper:
                 'url': t['link'],
             }] + list(reversed(thread))
         return []
-        
-    def scrape_thread_list(self, threads, count):
+
+    def scrape_thread_list(self, threads):
         with concurrent.futures.ThreadPoolExecutor(max_workers=CONNECTIONS) as executor:
             futures = (executor.submit(self.get_messages, conv) for conv in threads['data'])
             for future in concurrent.futures.as_completed(futures):
@@ -95,9 +95,9 @@ class FBScraper:
                 for message in messages:
                     self.writer.writerow(message)
         next = threads.get('paging', {}).get('next', '')
-        if next and count > 1:
-            self.scrape_thread_list(requests.get(next).json(), count - 1)
-        
+        if next:
+            self.scrape_thread_list(requests.get(next).json())
+
 
     def run(self):
         output = open(self.output, 'w', newline="\n", encoding="utf-8")
@@ -109,7 +109,7 @@ class FBScraper:
         fieldnames = ['from_id', 'from', 'time', 'message', 'attachments', 'shares', 'url']
         self.writer = csv.DictWriter(output, dialect='excel', fieldnames=fieldnames, extrasaction='ignore', quoting=csv.QUOTE_NONNUMERIC)
         self.writer.writerow(dict((n, n) for n in fieldnames))
-        self.scrape_thread_list(threads, 20)
+        self.scrape_thread_list(threads)
         output.close()
 
 def main():
@@ -130,7 +130,7 @@ def main():
     print("token: ", args.token[0])
     print("since: ", args.since)
     print("until: ", args.until)
-    
+
     FBScraper(args.page[0], args.output[0], args.token[0], args.since, args.until, args.folder).run()
 
 if __name__ == "__main__":
